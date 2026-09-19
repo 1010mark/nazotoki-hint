@@ -63,11 +63,31 @@
     letter-spacing: 0.08em;
   }
 
-  header.page p.lead {
+  header.page .story {
     color: var(--muted);
     font-size: 0.95rem;
-    margin: 18px auto 0;
-    max-width: 30em;
+    margin: 26px auto 0;
+    max-width: 34em;
+    word-break: auto-phrase;
+  }
+  header.page .story p { margin: 0 0 14px; }
+  header.page .story .quote {
+    color: var(--text);
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+
+  header.page ul.rules {
+    display: inline-block;
+    margin: 10px 0 0;
+    padding: 12px 18px;
+    list-style: none;
+    text-align: left;
+    font-size: 0.85rem;
+    color: var(--muted);
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 10px;
   }
 
   .step {
@@ -184,37 +204,21 @@
     cursor: default;
   }
 
-  .result {
-    min-height: 1.8em;
-    margin: 12px 0 0;
-    font-size: 0.95rem;
-    color: var(--muted);
-  }
-  .result.ng { color: var(--ng); }
-  .result.ok {
-    display: inline-block;
-    color: var(--answer);
-    background: var(--answer-bg);
-    border-radius: 6px;
-    padding: 1px 10px;
-    font-weight: 700;
-  }
-
-  form.answer-box.shake { animation: shake 0.35s ease; }
+  /* 不正解: 文章は出さず、揺らして枠を赤くするだけ */
+  form.answer-box.ng { animation: shake 0.35s ease; }
+  form.answer-box.ng input { border-color: var(--ng); }
   @keyframes shake {
     20%, 60% { transform: translateX(-6px); }
     40%, 80% { transform: translateX(6px); }
   }
   @media (prefers-reduced-motion: reduce) {
-    form.answer-box.shake { animation: none; }
+    form.answer-box.ng { animation: none; }
   }
 
-  footer.page {
-    text-align: center;
-    margin-top: 64px;
-    color: var(--muted);
-    font-size: 0.8rem;
-    letter-spacing: 0.1em;
+  .noscript {
+    margin: 12px 0 0;
+    font-size: 0.9rem;
+    color: var(--ng);
   }
 
   @media (max-width: 480px) {
@@ -230,7 +234,16 @@
   <header class="page">
     <p class="eyebrow">ADDITIONAL&nbsp;PROBLEM</p>
     <h1>追加問題</h1>
-    <p class="lead">すべての問題を解き、最後に導かれる答えを<br>一番下の解答欄に入力してください。</p>
+    <div class="story">
+      <p>あなたは事件を解決し、報告書を提出した。<br>しかし、開発者が対消滅システムを削除する前、あなた達はふと思う。</p>
+      <p class="quote">「もし自分たちがパソコンを出力すればどうなるのか？」</p>
+      <p>そう思ったあなた達はパソコンを生成した。<br>データにアクセスするには、次の謎を解く必要があるようだ。</p>
+    </div>
+    <ul class="rules">
+      <li>※メモの有無は謎解きに関係しない</li>
+      <li>※この問題+対消滅システムの理解だけで解くことが可能</li>
+      <li>※解答はひらがな</li>
+    </ul>
   </header>
 
   <!-- ===================== 問題 ===================== -->
@@ -280,12 +293,9 @@
         <input id="answer-input" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done">
         <button type="submit" id="answer-button">答え合わせ</button>
       </div>
-      <p class="result" id="answer-result" role="status" aria-live="polite"></p>
-      <noscript><p class="result ng">答え合わせには JavaScript を有効にしてください。</p></noscript>
+      <noscript><p class="noscript">答え合わせには JavaScript を有効にしてください。</p></noscript>
     </form>
   </section>
-
-  <footer class="page">— GOOD LUCK —</footer>
 
 </div>
 
@@ -295,12 +305,12 @@
   const ITERATIONS = 300000;
   const SALT_CHECK = "0e8c021c75567e1e93d272fd85a8b82f";
   const SALT_PATH = "38eadd3214003ce0de85363ddf146c62";
+  const SALT_KEY = "f394e3450f541412d191b978c5ff0c31";
   const ANSWER_HASH = "fccaade18c4d217a913bad8f318478f2c38c268cf55e24a1c6865c0d92bfdb4d";
 
   const form = document.getElementById("answer-form");
   const input = document.getElementById("answer-input");
   const button = document.getElementById("answer-button");
-  const result = document.getElementById("answer-result");
 
   // 全角/半角・カタカナ・空白・長音記号の表記ゆれを吸収する
   function normalize(s) {
@@ -322,46 +332,36 @@
     return Array.from(new Uint8Array(bits), b => b.toString(16).padStart(2, "0")).join("");
   }
 
-  function show(message, state) {
-    result.textContent = message;
-    result.className = "result " + state;
+  function fail() {
+    form.classList.remove("ng");
+    void form.offsetWidth;
+    form.classList.add("ng");
+    button.disabled = false;
   }
 
   // IME の変換確定の Enter で送信されないようにする
   input.addEventListener("keydown", e => {
     if (e.key === "Enter" && (e.isComposing || e.keyCode === 229)) e.preventDefault();
   });
+  input.addEventListener("input", () => form.classList.remove("ng"));
+
+  // 正解ページから戻ってきたときにボタンが押せないままにならないようにする
+  window.addEventListener("pageshow", () => { button.disabled = false; });
 
   form.addEventListener("submit", async e => {
     e.preventDefault();
     const answer = normalize(input.value);
-    if (!answer) {
-      show("答えを入力してください。", "ng");
-      return;
-    }
-    if (!window.crypto || !crypto.subtle) {
-      show("このブラウザでは答え合わせができません。", "ng");
-      return;
-    }
+    if (!answer || button.disabled) return;
 
     button.disabled = true;
-    show("確認中…", "");
     try {
-      if (await pbkdf2Hex(answer, SALT_CHECK) !== ANSWER_HASH) {
-        show("ちがうようです。もう一度考えてみましょう。", "ng");
-        form.classList.remove("shake");
-        void form.offsetWidth;
-        form.classList.add("shake");
-        button.disabled = false;
-        return;
-      }
-      show("正解！", "ok");
-      // 正解ページの場所も答えから導出するので、コードからは辿れない
+      if (await pbkdf2Hex(answer, SALT_CHECK) !== ANSWER_HASH) return fail();
+      // 正解ページの場所と、その本文を復号する鍵も答えから導出するので、コードからは辿れない
       const slug = (await pbkdf2Hex(answer, SALT_PATH)).slice(0, 16);
-      setTimeout(() => { location.href = "./" + slug + "/"; }, 1200);
+      const key = await pbkdf2Hex(answer, SALT_KEY);
+      location.href = "./" + slug + "/#" + key;
     } catch (err) {
-      show("エラーが発生しました。もう一度お試しください。", "ng");
-      button.disabled = false;
+      fail();
     }
   });
 })();
